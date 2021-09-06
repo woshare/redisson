@@ -55,7 +55,7 @@ public class RedissonLock extends RedissonBaseLock {
     public RedissonLock(CommandAsyncExecutor commandExecutor, String name) {
         super(commandExecutor, name);
         this.commandExecutor = commandExecutor;
-        this.internalLockLeaseTime = commandExecutor.getConnectionManager().getCfg().getLockWatchdogTimeout();
+        this.internalLockLeaseTime = commandExecutor.getConnectionManager().getCfg().getLockWatchdogTimeout();//30*1000
         this.pubSub = commandExecutor.getConnectionManager().getSubscribeService().getLockPubSub();
     }
 
@@ -96,7 +96,7 @@ public class RedissonLock extends RedissonBaseLock {
         long threadId = Thread.currentThread().getId();
         Long ttl = tryAcquire(-1, leaseTime, unit, threadId);
         // lock acquired
-        if (ttl == null) {
+        if (ttl == null) {//是当前线程获取到锁了，并且会重新设置超时淘汰时间和自增可重入次数
             return;
         }
 
@@ -148,7 +148,7 @@ public class RedissonLock extends RedissonBaseLock {
         if (leaseTime != -1) {
             ttlRemainingFuture = tryLockInnerAsync(waitTime, leaseTime, unit, threadId, RedisCommands.EVAL_NULL_BOOLEAN);
         } else {
-            ttlRemainingFuture = tryLockInnerAsync(waitTime, internalLockLeaseTime,
+            ttlRemainingFuture = tryLockInnerAsync(waitTime, internalLockLeaseTime,  //key超时淘汰 30秒=30*1000
                     TimeUnit.MILLISECONDS, threadId, RedisCommands.EVAL_NULL_BOOLEAN);
         }
 
@@ -174,7 +174,7 @@ public class RedissonLock extends RedissonBaseLock {
         if (leaseTime != -1) {
             ttlRemainingFuture = tryLockInnerAsync(waitTime, leaseTime, unit, threadId, RedisCommands.EVAL_LONG);
         } else {
-            ttlRemainingFuture = tryLockInnerAsync(waitTime, internalLockLeaseTime,
+            ttlRemainingFuture = tryLockInnerAsync(waitTime, internalLockLeaseTime,//key超时淘汰 30秒=30*1000
                     TimeUnit.MILLISECONDS, threadId, RedisCommands.EVAL_LONG);
         }
         ttlRemainingFuture.onComplete((ttlRemaining, e) -> {
@@ -199,6 +199,21 @@ public class RedissonLock extends RedissonBaseLock {
         return get(tryLockAsync());
     }
 
+	/**
+	 * 1,如果key不存在，（key=getLock中参数name），则 hincrby key hash-key，hash-value
+	 * 2，设置key毫秒超时淘汰
+	 *
+	 * 3，如果key存在，并且包含元素hash-key，执行如上1和2，hash-key=commandExecutor.getConnectionManager().getId()+":"+threadId
+	 *
+	 * 4，如果key存在，并且不包含元素hash-key，则获取超时淘汰时间长
+	 * @param waitTime
+	 * @param leaseTime
+	 * @param unit
+	 * @param threadId
+	 * @param command
+	 * @param <T>
+	 * @return
+	 */
     <T> RFuture<T> tryLockInnerAsync(long waitTime, long leaseTime, TimeUnit unit, long threadId, RedisStrictCommand<T> command) {
         return evalWriteAsync(getRawName(), LongCodec.INSTANCE, command,
                 "if (redis.call('exists', KEYS[1]) == 0) then " +
@@ -287,7 +302,13 @@ public class RedissonLock extends RedissonBaseLock {
 //        return get(tryLockAsync(waitTime, leaseTime, unit));
     }
 
-    protected RFuture<RedissonLockEntry> subscribe(long threadId) {
+	/**
+	 * getEntryName=commandExecutor.getConnectionManager().getId()+":"+lockName
+	 * getChannelName=redisson_lock__channel:{lockName}
+	 * @param threadId
+	 * @return
+	 */
+	protected RFuture<RedissonLockEntry> subscribe(long threadId) {
         return pubSub.subscribe(getEntryName(), getChannelName());
     }
 
