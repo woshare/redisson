@@ -99,7 +99,10 @@ public class RedissonLock extends RedissonBaseLock {
         if (ttl == null) {//是当前线程获取到锁了，并且会重新设置超时淘汰时间和自增可重入次数
             return;
         }
+        //加锁操作失败，订阅消息，利用 redis 的 pubsub 提供一个通知机制来减少不断的重试，避免发生活锁。
+        //活锁：是指线程 1 可以使用资源，但它很礼貌，让其他线程先使用资源，线程 2 也可以使用资源，但它很绅士，也让其他线程先使用资源。这样你让我，我让你，最后两个线程都无法使用资源
 
+        //在lock中有订阅这个可以，unlock unlockInnerAsync 则publish redisson_lock__channel:{lockName} LockPubSub.UNLOCK_MESSAGE=0
         RFuture<RedissonLockEntry> future = subscribe(threadId);
         if (interruptibly) {
             commandExecutor.syncSubscriptionInterrupted(future);
@@ -116,6 +119,12 @@ public class RedissonLock extends RedissonBaseLock {
                 }
 
                 // waiting for message
+                //当前线程没有拿到锁，先在上面订阅了channel key=redisson_lock__channel:{lockName}
+                //在如下则，等待在拿到锁的线程unlock之后可重入计数=0时，
+                // 会pulish redisson_lock__channel:{lockName} LockPubSub.UNLOCK_MESSAGE 一个信息，则唤醒等待获取锁的线程去tryAcquire
+
+                //这个和JUC下可重入锁的实现逻辑是一致的，在JUC下会有等待队列，那这个是先唤醒谁，随机？
+                //如何唤醒的？
                 if (ttl >= 0) {
                     try {
                         future.getNow().getLatch().tryAcquire(ttl, TimeUnit.MILLISECONDS);
@@ -381,7 +390,7 @@ public class RedissonLock extends RedissonBaseLock {
                         "return 0; " +
                         "else " +
                         "redis.call('del', KEYS[1]); " +
-                        "redis.call('publish', KEYS[2], ARGV[1]); " +
+                        "redis.call('publish', KEYS[2], ARGV[1]); " + //在lock中有订阅这个可以，unlock unlockInnerAsync 则publish redisson_lock__channel:{lockName} LockPubSub.UNLOCK_MESSAGE=0
                         "return 1; " +
                         "end; " +
                         "return nil;",

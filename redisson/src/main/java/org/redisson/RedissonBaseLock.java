@@ -306,7 +306,7 @@ public abstract class RedissonBaseLock extends RedissonExpirable implements RLoc
         RFuture<Boolean> future = unlockInnerAsync(threadId);
 
         future.onComplete((opStatus, e) -> {
-            cancelExpirationRenewal(threadId);
+            cancelExpirationRenewal(threadId);//删除watch dog
 
             if (e != null) {
                 result.tryFailure(e);
