@@ -362,7 +362,15 @@ public class RedissonLock extends RedissonBaseLock {
                 Arrays.asList(getRawName(), getChannelName()), LockPubSub.UNLOCK_MESSAGE);
     }
 
-    protected RFuture<Boolean> unlockInnerAsync(long threadId) {
+	/**
+	 * 1,如果不存在key 和hash-key，则直接退出
+	 * 2，存在key和hash-key，则可重入计数减一
+	 * 3，当可重入计数还大于0，则更新一下淘汰时长，还需要继续被同一个线程解锁，因为同一个线程下可重入锁被多次lock
+	 * 4，如果可重入计数等于0，则可重入可以彻底释放了，则删除这个key，并发布订阅，让之前等待该锁的线程进入
+	 * @param threadId
+	 * @return
+	 */
+	protected RFuture<Boolean> unlockInnerAsync(long threadId) {
         return evalWriteAsync(getRawName(), LongCodec.INSTANCE, RedisCommands.EVAL_BOOLEAN,
                 "if (redis.call('hexists', KEYS[1], ARGV[3]) == 0) then " +
                         "return nil;" +

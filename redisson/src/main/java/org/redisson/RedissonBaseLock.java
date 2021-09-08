@@ -128,6 +128,9 @@ public abstract class RedissonBaseLock extends RedissonExpirable implements RLoc
         return id + ":" + threadId;
     }
 
+    /**
+     * watch dog 逻辑
+     */
     private void renewExpiration() {
         ExpirationEntry ee = EXPIRATION_RENEWAL_MAP.get(getEntryName());
         if (ee == null) {
