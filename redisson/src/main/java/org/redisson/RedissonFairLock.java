@@ -124,7 +124,7 @@ public class RedissonFairLock extends RedissonLock implements RLock {
                             "break;" +
                         "end;" +
                     "end;" +
-
+										//当锁没有被拥有，并且 （等待队列还不存在，或等待队列已经存在但是队首是获取锁的线程自己
                     "if (redis.call('exists', KEYS[1]) == 0) " +
                         "and ((redis.call('exists', KEYS[2]) == 0) " +
                             "or (redis.call('lindex', KEYS[2], 0) == ARGV[2])) then " +
@@ -141,6 +141,7 @@ public class RedissonFairLock extends RedissonLock implements RLock {
                         "redis.call('pexpire', KEYS[1], ARGV[1]);" +
                         "return nil;" +
                     "end;" +
+				                    //当锁存在，并且当前线程是拥有者，则直接可重入计数+1，超时淘汰重置
                     "if (redis.call('hexists', KEYS[1], ARGV[2]) == 1) then " +
                         "redis.call('hincrby', KEYS[1], ARGV[2], 1);" +
                         "redis.call('pexpire', KEYS[1], ARGV[1]);" +
@@ -151,7 +152,7 @@ public class RedissonFairLock extends RedissonLock implements RLock {
                     unit.toMillis(leaseTime), getLockName(threadId), currentTime, wait);
         }
 
-        if (command == RedisCommands.EVAL_LONG) {
+        if (command == RedisCommands.EVAL_LONG) {//tryAcquireAsync->tryLockInnerAsync 是用的这种类型
             return evalWriteAsync(getRawName(), LongCodec.INSTANCE, command,
                     // remove stale threads
                     "while true do " +
@@ -170,7 +171,7 @@ public class RedissonFairLock extends RedissonLock implements RLock {
                             "break;" +
                         "end;" +
                     "end;" +
-
+				                    //当锁没有被拥有，并且 （等待队列还不存在，或等待队列已经存在但是队首是获取锁的线程自己
                     // check if the lock can be acquired now
                     "if (redis.call('exists', KEYS[1]) == 0) " +
                         "and ((redis.call('exists', KEYS[2]) == 0) " +
@@ -191,7 +192,7 @@ public class RedissonFairLock extends RedissonLock implements RLock {
                         "redis.call('pexpire', KEYS[1], ARGV[1]);" +
                         "return nil;" +
                     "end;" +
-
+				                    //当锁存在，并且当前线程是拥有者，则直接可重入计数+1，超时淘汰重置
                     // check if the lock is already held, and this is a re-entry
                     "if redis.call('hexists', KEYS[1], ARGV[2]) == 1 then " +
                         "redis.call('hincrby', KEYS[1], ARGV[2],1);" +
@@ -220,7 +221,7 @@ public class RedissonFairLock extends RedissonLock implements RLock {
                         "ttl = redis.call('pttl', KEYS[1]);" +
                     "end;" +
                     "local timeout = ttl + tonumber(ARGV[3]) + tonumber(ARGV[4]);" +
-                    "if redis.call('zadd', KEYS[3], timeout, ARGV[2]) == 1 then " +
+                    "if redis.call('zadd', KEYS[3], timeout, ARGV[2]) == 1 then " +//当前线程获取不到该锁，则放入timeoutSet hset和waitQueue list中
                         "redis.call('rpush', KEYS[2], ARGV[2]);" +
                     "end;" +
                     "return ttl;",

@@ -196,7 +196,7 @@ public class RedissonLock extends RedissonBaseLock {
                 if (leaseTime != -1) {
                     internalLockLeaseTime = unit.toMillis(leaseTime);
                 } else {
-                    scheduleExpirationRenewal(threadId);
+                    scheduleExpirationRenewal(threadId);//添加watch dog
                 }
             }
         });
